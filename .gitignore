@@ -1,0 +1,12 @@
+node_modules
+.env
+.wellfound-chrome-profile
+.indeed-chrome-profile
+.naukri-chrome-profile
+.naukri-apply-profile
+.*-chrome-profile
+.*-profile
+apply-state-*.json
+applications*.csv
+blocked-*.png
+blocked-step-*.png
