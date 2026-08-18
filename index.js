@@ -16,9 +16,10 @@
  *   node index.js wellfound --offscreen   Run the browser off-screen (won't steal focus).
  *
  * NPM SCRIPTS (from package.json):
- *   npm run wellfound           → dry run
- *   npm run wellfound:live      → live apply
- *   npm run wellfound:login     → save login session
+ *   npm run login      → save login session
+ *   npm run dry        → dry run
+ *   npm start          → live apply
+ *   npm run offscreen  → live apply in background offscreen
  */
 'use strict';
 

@@ -4,15 +4,10 @@
   "description": "Automated Wellfound job applier using Playwright. Modular inject/ + runner/ architecture.",
   "main": "index.js",
   "scripts": {
-    "dev":              "node index.js wellfound --live",
-    "wellfound:login":  "node index.js wellfound login",
-    "wellfound":        "node index.js wellfound",
-    "wellfound:live":   "node index.js wellfound --live",
-    "wellfound:offscreen": "node index.js wellfound --live --offscreen",
-    "dev:wellfound":    "nodemon index.js wellfound",
-    "dev:wellfound:live": "nodemon index.js wellfound --live",
-    "test:build":       "node -e \"const {buildScript}=require('./runner/script-builder');const {CV,geminiKey}=require('./config');const s=buildScript({CV,geminiKey,dryRun:true,maxApplications:1});console.log('Script OK:', (s.length/1024).toFixed(1)+'KB')\"",
-    "test:config":      "node -e \"const c=require('./config');console.log('Name:',c.CV.name,'Email:',c.CV.email,'Gemini key set:',!!c.geminiKey)\""
+    "login": "node index.js wellfound login",
+    "dry": "node index.js wellfound",
+    "start": "node index.js wellfound --live",
+    "offscreen": "node index.js wellfound --live --offscreen"
   },
   "nodemonConfig": {
     "ignore": [
@@ -25,6 +20,10 @@
     ]
   },
   "keywords": ["wellfound", "playwright", "automation", "job-apply"],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Satyam-xD/Wellfound-Apply.git"
+  },
   "author": "",
   "license": "ISC",
   "devDependencies": {
