@@ -16,11 +16,13 @@ function log(...args) {
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 /**
- * humanDelay — random wait between CONFIG.MIN_DELAY_MS and CONFIG.MAX_DELAY_MS.
- * Emits a countdown update every second so the terminal stays informed.
+ * humanDelay — wait between CONFIG.MIN_DELAY_MS and CONFIG.MAX_DELAY_MS.
+ * Emits a countdown update every second so the terminal stays informed with a live timer.
  */
 async function humanDelay() {
-  const totalMs = CONFIG.MIN_DELAY_MS + Math.random() * (CONFIG.MAX_DELAY_MS - CONFIG.MIN_DELAY_MS);
+  const min = CONFIG.MIN_DELAY_MS ?? 5000;
+  const max = Math.max(min, CONFIG.MAX_DELAY_MS ?? 10000);
+  const totalMs = min + Math.random() * (max - min);
   let remainingSec = Math.round(totalMs / 1000);
 
   while (remainingSec > 0) {

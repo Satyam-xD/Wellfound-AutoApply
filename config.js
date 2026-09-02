@@ -59,6 +59,8 @@ const CV = {
 
 const CREDS = { email: g('EMAIL') || g('GOOGLE_EMAIL'), password: g('PASSWORD') || g('GOOGLE_PASSWORD') };
 const geminiKey = g('GEMINI_KEY');
-const ollamaModel = g('OLLAMA_MODEL', 'llama3');
+const minDelaySeconds = parseInt(g('MIN_DELAY_SECONDS', '5'), 10);
+const maxDelaySeconds = parseInt(g('MAX_DELAY_SECONDS', '10'), 10);
 
-module.exports = { CV, CREDS, geminiKey, ollamaModel };
+module.exports = { CV, CREDS, geminiKey, minDelaySeconds, maxDelaySeconds };
+

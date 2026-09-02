@@ -5,11 +5,19 @@
   "main": "index.js",
   "scripts": {
     "login": "node index.js wellfound login",
-    "dry": "node index.js wellfound",
-    "start": "node index.js wellfound --live",
-    "offscreen": "node index.js wellfound --live --offscreen"
+    "dry": "nodemon index.js wellfound",
+    "start": "nodemon index.js wellfound --live",
+    "offscreen": "nodemon index.js wellfound --live --offscreen"
   },
   "nodemonConfig": {
+    "watch": [
+      "index.js",
+      "config.js",
+      ".env",
+      "inject",
+      "runner"
+    ],
+    "ext": "js,json,env",
     "ignore": [
       ".wellfound-chrome-profile/**",
       ".*-chrome-profile/**",
@@ -19,7 +27,12 @@
       "node_modules/**"
     ]
   },
-  "keywords": ["wellfound", "playwright", "automation", "job-apply"],
+  "keywords": [
+    "wellfound",
+    "playwright",
+    "automation",
+    "job-apply"
+  ],
   "repository": {
     "type": "git",
     "url": "https://github.com/Satyam-xD/Wellfound-Apply.git"

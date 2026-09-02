@@ -23,7 +23,8 @@
  */
 'use strict';
 
-const { CV, CREDS, geminiKey, ollamaModel } = require('./config');
+const { CV, CREDS, geminiKey, minDelaySeconds, maxDelaySeconds } = require('./config');
+
 const { launchBrowser }                     = require('./runner/browser');
 const { ensureLoggedIn }                    = require('./runner/auth');
 const { buildScript }                       = require('./runner/script-builder');
@@ -79,6 +80,14 @@ process.on('uncaughtException', (e) =>
   const ctx      = await launchBrowser(site.profile, OFFSCREEN);
   const mainPage = ctx.pages()[0] || (await ctx.newPage());
 
+  const cleanExit = async () => {
+    try { await ctx.close(); } catch (_) {}
+    process.exit(0);
+  };
+  process.once('SIGINT', cleanExit);
+  process.once('SIGTERM', cleanExit);
+  process.once('SIGUSR2', cleanExit);
+
   // ── Login-only mode ────────────────────────────────────────────
   if (LOGIN_MODE) {
     await mainPage.goto(site.loginUrl, { waitUntil: 'domcontentloaded', timeout: 60_000 }).catch(() => {});
@@ -96,10 +105,12 @@ process.on('uncaughtException', (e) =>
   const script = buildScript({
     CV,
     geminiKey,
-    ollamaModel,
     dryRun:          !LIVE,
     maxApplications: dayState.target,
+    minDelayMs:      minDelaySeconds * 1000,
+    maxDelayMs:      maxDelaySeconds * 1000,
   });
+
   log(`Script assembled: ${(script.length / 1024).toFixed(1)} KB`);
 
   // ── Run ───────────────────────────────────────────────────────

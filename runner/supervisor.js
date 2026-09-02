@@ -12,7 +12,7 @@ const path = require('path');
 const MAX_RUNTIME_MS = 100 * 60 * 1000;  // 100 minutes
 
 /** If the injected script hasn't logged anything in this period, rotate. */
-const IDLE_ROTATE_MS = 8 * 60 * 1000;    // 8 minutes
+const IDLE_ROTATE_MS = 4 * 60 * 1000;    // 4 minutes
 
 // ── Helpers ───────────────────────────────────────────────────
 
@@ -154,8 +154,8 @@ function wirePage({ page, site, script, live, target, dayState, logApplication, 
 
     log('  ' + clean.slice(0, 200));
 
-    // Take a screenshot when the script can't find the submit button
-    if (/no Submit button|Submit button is disabled/.test(clean)) {
+    // Take a screenshot when the script can't find the submit button, or hits a hard block
+    if (/no Submit button|Submit button is disabled|\uD83D\uDEAB/.test(clean)) {
       const snapPath = path.join(__dirname, '..', `blocked-${Date.now()}.png`);
       page.screenshot({ path: snapPath }).catch(() => {});
       log(`  📸 Screenshot saved: ${snapPath}`);

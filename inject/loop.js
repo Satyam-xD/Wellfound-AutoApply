@@ -8,17 +8,33 @@
 // The runner also rotates these externally on idle, but in-script rotation
 // handles the case where the SPA router is available.
 const SEARCH_PAGES = [
+  // ── Entry-level / 0-experience specific (yoe=0 = Wellfound "0 years" filter) ──
+  '/jobs?roleSlugs[]=software-engineer&yoe=0',
+  '/jobs?roleSlugs[]=full-stack-developer&yoe=0',
+  '/jobs?roleSlugs[]=frontend-developer&yoe=0',
+  '/jobs?roleSlugs[]=backend-developer&yoe=0',
+  '/jobs?roleSlugs[]=ai-engineer&yoe=0',
+  '/jobs?roleSlugs[]=javascript-developer&yoe=0',
+  '/jobs?roleSlugs[]=react-developer&yoe=0',
+  '/jobs?roleSlugs[]=nodejs-developer&yoe=0',
+  '/jobs?remote=true&roleSlugs[]=software-engineer&yoe=0',
+  '/jobs?locationSlugs[]=india&roleSlugs[]=software-engineer&yoe=0',
+  '/jobs?locationSlugs[]=bangalore-karnataka-india&roleSlugs[]=software-engineer&yoe=0',
+  '/jobs?locationSlugs[]=delhi-india&roleSlugs[]=software-engineer&yoe=0',
+  '/jobs?locationSlugs[]=hyderabad-telangana-india&roleSlugs[]=software-engineer&yoe=0',
+  '/jobs?locationSlugs[]=pune-maharashtra-india&roleSlugs[]=software-engineer&yoe=0',
+  '/jobs?locationSlugs[]=noida-uttar-pradesh-india&roleSlugs[]=software-engineer&yoe=0',
+  '/jobs?remote=true&locationSlugs[]=india&yoe=0',
+  // ── Broader fallback (no yoe filter) in case yoe=0 yields too few cards ──
   '/jobs?roleSlugs[]=software-engineer',
   '/jobs?roleSlugs[]=full-stack-developer',
   '/jobs?roleSlugs[]=frontend-developer',
   '/jobs?roleSlugs[]=backend-developer',
+  '/jobs?roleSlugs[]=ai-engineer',
+  '/jobs?roleSlugs[]=react-developer',
+  '/jobs?roleSlugs[]=nodejs-developer',
   '/jobs?remote=true&roleSlugs[]=software-engineer',
   '/jobs?locationSlugs[]=india&roleSlugs[]=software-engineer',
-  '/jobs?locationSlugs[]=bangalore-karnataka-india&roleSlugs[]=software-engineer',
-  '/jobs?locationSlugs[]=delhi-india&roleSlugs[]=software-engineer',
-  '/jobs?locationSlugs[]=hyderabad-telangana-india&roleSlugs[]=software-engineer',
-  '/jobs?locationSlugs[]=pune-maharashtra-india&roleSlugs[]=software-engineer',
-  '/jobs?locationSlugs[]=noida-uttar-pradesh-india&roleSlugs[]=software-engineer',
   '/jobs?remote=true&locationSlugs[]=india',
 ];
 
@@ -39,7 +55,7 @@ async function goToNextSearchPage() {
   log(`🌐 Moving to next search page: ${url}`);
   if (window.next?.router?.push) {
     window.next.router.push(url);
-    await sleep(6000); // let new cards render
+    await sleep(2000); // let new cards render
     window.scrollTo(0, 400);
     return true;
   }
@@ -59,33 +75,69 @@ function markSeen(href) {
   } catch (e) { log(`⚠ localStorage quota exceeded — seen-jobs list will not persist: ${e.message.split('\n')[0]}`); }
 }
 
+// ── Company dedup: avoid applying to the same company multiple times in one session ──
+const COMPANY_SEEN_KEY = 'wf_autoApply_companies_v1';
+const seenCompanies = new Set(JSON.parse(sessionStorage.getItem(COMPANY_SEEN_KEY) || '[]'));
+function markCompanySeen(company) {
+  if (!company) return;
+  const key = company.toLowerCase().trim();
+  seenCompanies.add(key);
+  try {
+    sessionStorage.setItem(COMPANY_SEEN_KEY, JSON.stringify([...seenCompanies]));
+  } catch (_) {}
+}
+
 // ── Main loop ───────────────────────────────────────────────
 let applied = 0;
-log(`🚀 Starting. DRY_RUN=${CONFIG.DRY_RUN} | max=${CONFIG.MAX_APPLICATIONS} | ${seen.size} jobs already seen`);
+log(`🚀 Starting. DRY_RUN=${CONFIG.DRY_RUN} | max=${CONFIG.MAX_APPLICATIONS} | ${seen.size} jobs seen | ${seenCompanies.size} companies recorded`);
 log('Keep this tab focused. Do not navigate away.');
-await sleep(4500); // let the feed finish rendering on initial load
+await sleep(1500); // let the feed finish rendering on initial load
 
 while (applied < CONFIG.MAX_APPLICATIONS) {
   const allRows = findJobRows();
-  const jobs    = allRows.filter((j) => !seen.has(j.href) && titleOk(j.title, j.rowText));
+  const jobs    = allRows.filter((j) => {
+    if (seen.has(j.href)) return false;
+    if (j.company && seenCompanies.has(j.company.toLowerCase().trim())) return false;
+    return titleOk(j.title, j.rowText);
+  });
 
   if (!jobs.length) {
-    // Log why jobs were filtered out (helps debug title mismatches)
-    if (allRows.length) {
-      log(`(filtered: ${allRows.slice(0, 4).map((j) => `"${j.title}"`).join(', ')} …)`);
+    // Breakdown of why cards were skipped
+    let expBlocked = 0, titleBlocked = 0, alreadySeen = 0, companyDuplicate = 0;
+    for (const r of allRows) {
+      if (seen.has(r.href)) { alreadySeen++; continue; }
+      if (r.company && seenCompanies.has(r.company.toLowerCase().trim())) { companyDuplicate++; continue; }
+      if (!titleOk(r.title, r.rowText)) {
+        if (EXP_DEMAND_RE.test(r.rowText) && !FRESHER_ALLOW_RE.test(r.rowText)) expBlocked++;
+        else titleBlocked++;
+      }
     }
-    log(`(page: ${allRows.length} cards total, 0 match filters)`);
+    log(`(feed: ${allRows.length} cards | ${alreadySeen} seen, ${expBlocked} exp-blocked, ${titleBlocked} title-filtered, ${companyDuplicate} same-company)`);
 
     // Try a "Load more" / "Show more" button first
     const moreBtn = findButtonByText(document, /load more|show more/i);
-    if (moreBtn) { moreBtn.click(); await sleep(3000); continue; }
+    if (moreBtn) { moreBtn.click(); await sleep(1500); continue; }
 
-    // Infinite scroll: keep scrolling; new cards load in batches
+    // Smart infinite scroll: stop early if 2 consecutive scrolls yield no new cards
     let grew = false;
-    for (let s = 0; s < 8 && !grew; s++) {
+    let consecutiveNoGrowth = 0;
+    let prevCount = allRows.length;
+    for (let s = 0; s < 6 && !grew; s++) {
       window.scrollTo(0, document.body.scrollHeight);
-      await sleep(2500);
-      grew = findJobRows().some((j) => !seen.has(j.href) && titleOk(j.title, j.rowText));
+      await sleep(1000);
+      const curRows = findJobRows();
+      if (curRows.length <= prevCount) {
+        consecutiveNoGrowth++;
+        if (consecutiveNoGrowth >= 2) break; // page has no more cards
+      } else {
+        consecutiveNoGrowth = 0;
+        prevCount = curRows.length;
+      }
+      grew = curRows.some((j) =>
+        !seen.has(j.href) &&
+        (!j.company || !seenCompanies.has(j.company.toLowerCase().trim())) &&
+        titleOk(j.title, j.rowText)
+      );
     }
     if (grew) continue;
 
@@ -96,7 +148,7 @@ while (applied < CONFIG.MAX_APPLICATIONS) {
     break;
   }
 
-  // ── Process the first matching job ──────────────────────────
+  // ── Process the highest-priority matching job ───────────────
   const job = jobs[0];
   markSeen(job.href);
   // Extract experience requirement from the card text before clicking
@@ -111,16 +163,20 @@ while (applied < CONFIG.MAX_APPLICATIONS) {
   try {
     // Scroll the card into view before clicking
     job.linkEl.scrollIntoView({ block: 'center' });
-    await sleep(700);
+    await sleep(300);
 
     // Prefer the card's Apply button — opens the form directly
     const clickTarget = job.applyBtn || job.linkEl;
     if (clickTarget.target === '_blank') clickTarget.setAttribute('target', '_self');
     clickTarget.click();
-    await sleep(3500); // wait for apply panel or job detail pane
+    await waitFor(() => findApplyPanel(), 2500, 200);
+    await sleep(300);
 
     const companyName = getCompany() || job.company || '';
     ok = await fillAndSubmit(companyName, job.title);
+    if (ok && companyName) {
+      markCompanySeen(companyName);
+    }
   } catch (jobErr) {
     log(`⚠ Unexpected error on "${job.title}": ${jobErr.message} — skipping to next job`);
     // Try to dismiss any stuck modal before continuing
@@ -135,9 +191,8 @@ while (applied < CONFIG.MAX_APPLICATIONS) {
   }
 
   // Close the overlay before trying the next card
-  await sleep(1000);
   closeModal(document.querySelector('[role="dialog"]'));
-  await sleep(700);
+  await sleep(300);
 
   // Kill any lingering modal backdrops so they don't block future card clicks
   document.querySelectorAll('[role="dialog"], [class*="modal" i]').forEach((m) => {
@@ -145,13 +200,13 @@ while (applied < CONFIG.MAX_APPLICATIONS) {
       try { m.style.display = 'none'; } catch (_) { /* cosmetic — ignore */ }
     }
   });
-  await sleep(400);
+  await sleep(200);
 
-  // Human-paced wait between real applications; short pause in dry-run / failed apply
+  // Wait between applications; short pause in dry-run / failed apply
   if (ok && !CONFIG.DRY_RUN) {
     await humanDelay();
   } else {
-    await sleep(2500);
+    await sleep(800);
   }
 }
 

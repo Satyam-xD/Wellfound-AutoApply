@@ -63,13 +63,27 @@ async function launchBrowser(profileDir, offscreen = false) {
 
   // Try installed Chrome → Edge → bundled Chromium in that order
   for (const channel of ['chrome', 'msedge', null]) {
-    try {
-      const launchOpts = channel ? { ...baseOpts, channel } : baseOpts;
-      const ctx = await chromium.launchPersistentContext(fullProfile, launchOpts);
-      console.log(`[browser] Launched successfully (channel=${channel || 'bundled chromium'})`);
-      return ctx;
-    } catch (e) {
-      console.log(`[browser] channel=${channel ?? 'bundled'} failed: ${e.message.split('\n')[0]}`);
+    for (let attempt = 1; attempt <= 2; attempt++) {
+      try {
+        const launchOpts = channel ? { ...baseOpts, channel } : baseOpts;
+        const ctx = await chromium.launchPersistentContext(fullProfile, launchOpts);
+        // Short settle to ensure context wasn't immediately killed by a duplicate-instance handoff
+        await new Promise((r) => setTimeout(r, 800));
+        const pages = ctx.pages();
+        if (!pages || pages.length === 0) {
+          await ctx.newPage();
+        }
+        console.log(`[browser] Launched successfully (channel=${channel || 'bundled chromium'})`);
+        return ctx;
+      } catch (e) {
+        if (attempt === 1 && channel === 'msedge') {
+          // If Edge is still releasing profile locks from a previous run, give it 2s
+          await new Promise((r) => setTimeout(r, 2000));
+          continue;
+        }
+        console.log(`[browser] channel=${channel ?? 'bundled'} failed: ${e.message.split('\n')[0]}`);
+        break;
+      }
     }
   }
   throw new Error('Could not launch any browser — is Chrome or Edge installed?');

@@ -28,7 +28,7 @@ const INJECT_FILES = ['utils.js', 'gemini.js', 'answers.js', 'apply.js', 'finder
  * @param {boolean} opts.dryRun           true → fill but don't submit
  * @param {number}  opts.maxApplications  Stop after this many applies
  */
-function buildScript({ CV, geminiKey, ollamaModel = 'llama3', dryRun, maxApplications }) {
+function buildScript({ CV, geminiKey, dryRun, maxApplications, minDelayMs, maxDelayMs }) {
   // Validate that all inject files exist before we start
   for (const file of INJECT_FILES) {
     const p = path.join(INJECT_DIR, file);
@@ -45,10 +45,9 @@ function buildScript({ CV, geminiKey, ollamaModel = 'llama3', dryRun, maxApplica
   const CONFIG = {
     DRY_RUN:          dryRun,
     MAX_APPLICATIONS: maxApplications,
-    MIN_DELAY_MS:     60_000,   // 1 min minimum between real applications
-    MAX_DELAY_MS:     150_000,  // 2.5 min maximum
+    MIN_DELAY_MS:     typeof minDelayMs === 'number' ? minDelayMs : 5_000,
+    MAX_DELAY_MS:     typeof maxDelayMs === 'number' ? maxDelayMs : 10_000,
     geminiKey:        geminiKey || '',
-    ollamaModel:      ollamaModel || 'llama3',
   };
 
   // The outer IIFE:

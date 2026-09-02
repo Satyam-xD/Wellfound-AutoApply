@@ -43,14 +43,22 @@ const FACTUAL_QA = [
     `I have ${CV.yearsOfExperience || '0-1 years of experience'}. Hands-on with ${(CV.skills || '').split(',').slice(0, 6).join(', ') || 'modern web development'}.`],
   [/notice period|when can you (start|join)|start date|joining/i,
     CV.startDate],
+  [/current .{0,15}(ctc|salary|compensation).*in (lpa|lakhs?)|current ctc/i,
+    CV.currentCTC || '0'],
   [/current .{0,15}(ctc|salary|compensation)/i,
-    CV.currentSalary || ''],
+    CV.currentSalary || '0 LPA'],
+  [/(expected|desired) .{0,15}(ctc|salary|compensation|pay).*in (lpa|lakhs?)|expected ctc/i,
+    String(CV.expectedCTC || '4').match(/\d+/)?.[0] || '4'],
   [/(expected|desired) .{0,15}(ctc|salary|compensation|pay)|salary expectation/i,
-    CV.expectedSalary],
+    CV.expectedSalary || '4-6 LPA'],
+  [/cgpa|gpa|percentage|marks|aggregate/i,
+    '8.2'],
   [/remote|work from home|wfh/i,
     `Yes, I am fully set up for remote work and can collaborate effectively across any timezone.`],
   [/reloc|move to|shift to|based out of|work from (our )?office|on-?site/i,
     `Yes — I am based in India and open to relocating anywhere in India (Bangalore, Delhi, Hyderabad, Mumbai, Pune, Noida). I am also open to remote roles globally.`],
+  [/authorized to work in india|eligible to work in india/i,
+    'Yes'],
   [/visa|sponsorship|work authorization|legally authorized|right to work|citizen/i,
     CV.workAuth],
   [/where are you (based|located)|current location|city/i,
@@ -62,8 +70,20 @@ const FACTUAL_QA = [
   [/phone|contact number|mobile/i, CV.phone],
   [/e-?mail/i,           CV.email],
   [/your name|full name|\bname\b/i, CV.name],
-  [/education|degree|university|college/i, CV.education],
-  [/gender/i,            CV.gender || 'Male'],
+  [/education|degree|university|college|qualification/i, CV.education],
+  [/are you a fresher|fresher candidate|fresh graduate/i,
+    'Yes, I am a fresher with hands-on internship experience in full-stack development and AI.'],
+  [/shift|rotational|night shift|shift timing/i,
+    'I prefer standard business hours but can discuss shift requirements if needed.'],
+  [/laptop|own (device|computer|system)|work (device|equipment)/i,
+    'Yes, I have my own laptop and a reliable high-speed internet connection for remote work.'],
+  [/languages? (known|spoken|proficiency)|language skills/i,
+    'English (professional), Hindi (native)'],
+  [/immediate joiner|available immediately|joining immediately|can you join/i,
+    `Yes, I am an immediate joiner. ${CV.startDate}`],
+  [/willing to work (from )?office|in-?office|onsite preference/i,
+    'Yes, I am open to working from office and also comfortable with hybrid or fully remote setups.'],
+  [/gender/i, CV.gender || 'Male'],
   [/date of birth|dob|birthday/i, CV.dob],
 ];
 
@@ -92,7 +112,7 @@ async function answerQuestion(questionText) {
   // 2. Only call Gemini for genuinely open-ended / essay questions.
   //    Simple short factual unknowns return GENERIC_ANSWER directly —
   //    this avoids burning API quota and getting bad answers on numeric/select fields.
-  if ((CONFIG.geminiKey || CONFIG.ollamaModel) && OPEN_ENDED_RE.test(questionText)) {
+  if (CONFIG.geminiKey && OPEN_ENDED_RE.test(questionText)) {
     log(`  🤖 Calling Gemini for open-ended question: "${questionText.slice(0, 50)}..."`);
     const ans = await geminiAsk(
       `Answer this job application question on behalf of ${CV.name}.\n` +
