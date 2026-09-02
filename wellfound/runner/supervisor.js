@@ -156,13 +156,14 @@ function wirePage({ page, site, script, live, target, dayState, logApplication, 
 
     // Take a screenshot when the script can't find the submit button, or hits a hard block
     if (/no Submit button|Submit button is disabled|\uD83D\uDEAB/.test(clean)) {
-      const snapPath = path.join(__dirname, '..', `blocked-${Date.now()}.png`);
+      const snapPath = path.join(__dirname, `blocked-${Date.now()}.png`);
       page.screenshot({ path: snapPath }).catch(() => {});
       log(`  📸 Screenshot saved: ${snapPath}`);
     }
 
-    // "▶ Applying: <title> @ <company> | <link> | <salary> | <exp>"
-    const applyMatch = clean.match(/▶ Applying: (.+)/);
+    // "▶ Applying: <title> @ <company> | <link> | <salary> | <exp>"   (Wellfound)
+    // "▶ [1/10] <title> @ <company>"                                    (Naukri)
+    const applyMatch = clean.match(/▶ (?:Applying: |\[\d+\/\d+\] )(.+)/);
     if (applyMatch) {
       const [main, link = '', salaryRaw = '', expRaw = ''] = applyMatch[1].split(' | ');
       const parts   = main.split(' @ ');
@@ -185,8 +186,8 @@ function wirePage({ page, site, script, live, target, dayState, logApplication, 
       }, 2500);
     }
 
-    // Detect successful submission
-    if (/✅ application sent|DRY_RUN — would click/i.test(text)) {
+    // Detect successful submission (matches both Wellfound and Naukri success messages)
+    if (/✅ (?:application sent|Applied to)|DRY_RUN — would click/i.test(text)) {
       state.submitted++;
       if (live) dayState.bump();
       log(`==> ${state.submitted}/${target} this run (${dayState.count}/${dayState.cap} today)`);
@@ -253,14 +254,13 @@ async function runSupervisor({ ctx, mainPage, site, script, target, live, daySta
 
   wirePage({ page: mainPage, site, script, live, target, dayState, logApplication, log, state });
 
-  // Close any extra tabs Wellfound may open (it shouldn't, but be safe)
+  // Close any unexpected extra tabs (the injected script blocks window.open,
+  // but just in case Naukri's service worker or extension opens one)
   ctx.on('page', async (newPage) => {
-    if (newPage !== mainPage) {
-      log(`Auto-closing extra tab: ${newPage.url() || 'new tab'}`);
-      await newPage.close().catch((e) =>
-        log(`⚠ Could not close extra tab: ${e.message.split('\n')[0]}`)
-      );
-    }
+    if (newPage === mainPage) return;
+    const tabUrl = newPage.url() || '';
+    log(`Extra tab detected (closing): ${tabUrl.slice(0, 80)}`);
+    await newPage.close().catch(() => {});
   });
 
   // Kick off the first injection on the already-open page

@@ -1,20 +1,17 @@
 /**
- * runner/auth.js
- * Checks whether the browser is logged in to Wellfound.
- * If not, auto-fills credentials and waits up to 2 minutes for the user
- * to complete any CAPTCHA / Google OAuth step.
+ * wellfound/auth.js
+ * Wellfound authentication check and credential auto-fill.
  */
 'use strict';
 
 /**
- * ensureLoggedIn — navigates to the first search URL, checks login state,
- * auto-fills credentials if needed, and waits for login to complete.
+ * ensureLoggedIn — verifies if Wellfound is authenticated, auto-fills credentials
+ * if not, and waits for user / OAuth confirmation.
  *
  * @param {import('playwright').Page} page
- * @param {object} site    Site config from SITES map (has .searches, .loginUrl)
- * @param {object} creds   { email, password } from config.js
- * @param {Function} log   Logging function
- * @returns {Promise<boolean>} true if logged in
+ * @param {object} site   Wellfound site config
+ * @param {object} creds  { email, password }
+ * @param {Function} log  Site logger
  */
 async function ensureLoggedIn(page, site, creds, log) {
   log('Checking Wellfound login status...');
@@ -22,33 +19,36 @@ async function ensureLoggedIn(page, site, creds, log) {
   await page.goto(site.searches[0], { waitUntil: 'domcontentloaded', timeout: 60000 }).catch((e) =>
     log(`⚠ Navigation to job feed failed: ${e.message.split('\n')[0]}`)
   );
-  await page.waitForTimeout(5000);
+  await page.waitForTimeout(4000);
 
-  const loggedIn = await _isLoggedIn(page);
-  if (loggedIn) { log('✅ Already logged in — proceeding.'); return true; }
+  const loggedIn = await isWellfoundLoggedIn(page);
+  if (loggedIn) {
+    log('✅ Already logged in to Wellfound — proceeding.');
+    return true;
+  }
 
-  // ── Auto-fill credentials ────────────────────────────────────
   const { email, password } = creds;
   if (!email || !password) {
-    log('⚠ No credentials in .env — please log in manually in the Chrome window (2 min).');
+    log('⚠ No credentials in .env — please log in manually in the browser window (2 min).');
   } else {
-    log(`🔑 Auto-logging in as ${email}...`);
-    await page.goto('https://wellfound.com/login', { waitUntil: 'domcontentloaded', timeout: 60000 }).catch((e) =>
+    log(`🔑 Auto-logging in to Wellfound as ${email}...`);
+    await page.goto(site.loginUrl, { waitUntil: 'domcontentloaded', timeout: 60000 }).catch((e) =>
       log(`⚠ Navigation to login page failed: ${e.message.split('\n')[0]}`)
     );
     await page.waitForTimeout(3000);
-    await _autoFill(page, email, password, log);
+    await autoFillWellfound(page, email, password, log);
   }
 
-  // ── Wait up to 2 minutes for login confirmation ──────────────
-  log('⏳ Waiting for login to complete (up to 2 min, handles Google OAuth / CAPTCHA)...');
+  log('⏳ Waiting for Wellfound login to complete (up to 2 min, handles OTP / CAPTCHA)...');
   const deadline = Date.now() + 120_000;
   while (Date.now() < deadline) {
     await page.waitForTimeout(3000);
     const url  = page.url();
-    const done = await _isLoggedIn(page);
-    if (done || /wellfound\.com\/(jobs|home|discover)/i.test(url)) {
-      log('✅ Login confirmed! Navigating to job feed...');
+    const done = await isWellfoundLoggedIn(page);
+    const urlConfirmed = /wellfound\.com\/(jobs|home|discover)/i.test(url);
+
+    if (done || urlConfirmed) {
+      log('✅ Wellfound login confirmed! Navigating to job feed...');
       await page.goto(site.searches[0], { waitUntil: 'domcontentloaded', timeout: 60000 }).catch((e) =>
         log(`⚠ Post-login navigation failed: ${e.message.split('\n')[0]}`)
       );
@@ -57,27 +57,21 @@ async function ensureLoggedIn(page, site, creds, log) {
     }
   }
 
-  log('⚠ Login timed out — proceeding anyway (applications may fail).');
+  log('⚠ Wellfound login timed out — proceeding anyway (applications may fail).');
   await page.goto(site.searches[0], { waitUntil: 'domcontentloaded', timeout: 60000 }).catch((e) =>
     log(`⚠ Final navigation to job feed failed: ${e.message.split('\n')[0]}`)
   );
   return false;
 }
 
-// ── Helpers ──────────────────────────────────────────────────
-
-async function _isLoggedIn(page) {
+async function isWellfoundLoggedIn(page) {
   return page.evaluate(() => {
-    // Positive signals — elements that only appear when you ARE logged in
     const hasProfileMenu = !!(
       document.querySelector('[data-test*="user-menu" i], [class*="userAvatar" i], [class*="profileMenu" i], [aria-label*="profile" i], [aria-label*="account" i]') ||
       document.querySelector('a[href*="/u/"], a[href*="/profile"], a[href*="/dashboard"]')
     );
     if (hasProfileMenu) return true;
 
-    // Negative signals — elements that only appear on the logged-OUT page.
-    // NOTE: Wellfound always has a "Join" / "Sign up" link in the nav for EMPLOYERS,
-    // so we only use /login and /sign_in as hard "not logged in" signals.
     const hasLoginLink = !!document.querySelector('a[href*="/login"], a[href*="sign_in"]');
     const hasAuthButtons = [...document.querySelectorAll('a, button')].some((el) => {
       const t = el.textContent?.trim() || '';
@@ -87,7 +81,7 @@ async function _isLoggedIn(page) {
   }).catch(() => false);
 }
 
-async function _autoFill(page, email, password, log) {
+async function autoFillWellfound(page, email, password, log) {
   try {
     const emailSel = 'input[type="email"], input[name="email"], input[placeholder*="email" i]';
     await page.waitForSelector(emailSel, { timeout: 8000 });
@@ -96,7 +90,6 @@ async function _autoFill(page, email, password, log) {
     log(`  ✍ Email filled: ${email}`);
     await page.waitForTimeout(500);
 
-    // Some Wellfound login flows show password after "Continue"
     const passSel = 'input[type="password"]';
     let passField = await page.$(passSel);
     if (!passField) {
@@ -104,7 +97,7 @@ async function _autoFill(page, email, password, log) {
         'button[type="submit"], button:has-text("Continue"), button:has-text("Next")'
       );
       if (nextBtn) { await nextBtn.click(); await page.waitForTimeout(2000); }
-      try { await page.waitForSelector(passSel, { timeout: 8000 }); } catch (_) { /* password field may already be visible */ }
+      try { await page.waitForSelector(passSel, { timeout: 8000 }); } catch (_) {}
       passField = await page.$(passSel);
     }
     if (passField) {
@@ -114,12 +107,11 @@ async function _autoFill(page, email, password, log) {
       await page.waitForTimeout(600);
     }
 
-    // Click the submit button
     const submitBtn =
-      await page.$('button[type="submit"], [name="commit"]') ||
+      await page.$('button[type="submit"], [name="commit"], button.btn-primary') ||
       await page.evaluateHandle(() =>
         [...document.querySelectorAll('button')]
-          .find((b) => /log in|sign in/i.test(b.textContent))
+          .find((b) => /log in|sign in|login/i.test(b.textContent))
       );
     if (submitBtn && (await submitBtn.asElement())) {
       await submitBtn.click();
@@ -130,4 +122,4 @@ async function _autoFill(page, email, password, log) {
   }
 }
 
-module.exports = { ensureLoggedIn };
+module.exports = { ensureLoggedIn, isWellfoundLoggedIn };

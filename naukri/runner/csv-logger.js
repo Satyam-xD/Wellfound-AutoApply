@@ -8,7 +8,7 @@
 const fs   = require('fs');
 const path = require('path');
 
-const CSV_FILE = path.join(__dirname, '..', 'applications.csv');
+const CSV_FILE = path.join(__dirname, '..', '..', 'applications.csv');
 const HEADER   = ['Date', 'Site', 'Role', 'Company', 'Experience Required', 'CTC/Salary', 'Skills', 'Job Link', 'Job Description'];
 
 /** Tech keywords extracted from title + JD to populate the Skills column. */

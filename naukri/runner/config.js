@@ -1,8 +1,8 @@
 /**
- * Loads all personal data + credentials from .env so nothing sensitive lives in code.
- * Tiny hand-rolled parser — no dependency needed for a flat KEY=value file.
+ * naukri/config.js
+ * Candidate profile & credentials loader for Naukri.
  */
-const fs = require('fs');
+const fs   = require('fs');
 const path = require('path');
 
 function loadEnv(file) {
@@ -19,12 +19,8 @@ function loadEnv(file) {
   return out;
 }
 
-const E = loadEnv(path.join(__dirname, '.env'));
+const E = loadEnv(path.join(__dirname, '..', '..', '.env'));
 const g = (k, d = '') => (E[k] != null && E[k] !== '' ? E[k] : (process.env[k] || d));
-
-if (!g('NAME') || !g('EMAIL')) {
-  console.warn('[config] .env missing or empty — copy .env.example to .env and fill it in.');
-}
 
 const CV = {
   name: g('NAME'),
@@ -37,21 +33,18 @@ const CV = {
   yearsOfExperience: g('YEARS_EXPERIENCE'),
   skills: g('SKILLS'),
   highlights: (g('HIGHLIGHTS') || '').split('||').map((s) => s.trim()).filter(Boolean),
-  // application answers
   noticePeriod: g('NOTICE_PERIOD'),
-  currentCTC: g('CURRENT_CTC'),                 // bare number for chatbots, e.g. "10"
-  expectedCTC: g('EXPECTED_CTC'),               // e.g. "18-25"
-  currentSalary: g('CURRENT_CTC') ? g('CURRENT_CTC') + ' LPA' : '',     // formatted for free-text fields
+  currentCTC: g('CURRENT_CTC'),
+  expectedCTC: g('EXPECTED_CTC'),
+  currentSalary: g('CURRENT_CTC') ? g('CURRENT_CTC') + ' LPA' : '',
   expectedSalary: g('EXPECTED_CTC') ? g('EXPECTED_CTC') + ' LPA' : '',
   dob: g('DOB'),
   gender: g('GENDER'),
   workAuth: g('WORK_AUTH', 'Authorized to work in my country of residence.'),
-  // links
   github: g('GITHUB_URL'),
   linkedin: g('LINKEDIN_URL'),
   portfolio: g('PORTFOLIO_URL'),
   links: `GitHub: ${g('GITHUB_URL')} | LinkedIn: ${g('LINKEDIN_URL')} | Portfolio: ${g('PORTFOLIO_URL')}`,
-  // derived sentences
   remoteOk: 'Yes, I am fully set up for remote work and also open to hybrid/onsite.',
   relocate: g('LOCATION') ? `Yes, I am open to relocation. I am currently based in ${g('LOCATION')}.` : 'Yes, I am open to relocation.',
   startDate: g('NOTICE_PERIOD') ? `I can start within ${g('NOTICE_PERIOD')}.` : 'Available to join immediately.',
@@ -63,4 +56,3 @@ const minDelaySeconds = parseInt(g('MIN_DELAY_SECONDS', '5'), 10);
 const maxDelaySeconds = parseInt(g('MAX_DELAY_SECONDS', '10'), 10);
 
 module.exports = { CV, CREDS, geminiKey, minDelaySeconds, maxDelaySeconds };
-

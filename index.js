@@ -1,55 +1,95 @@
 #!/usr/bin/env node
 /**
- * index.js — Wellfound Auto-Apply entry point
- * ============================================
+ * index.js — Multi-platform Job Auto-Applier Orchestrator
+ * ========================================================
+ *
+ * Runs Wellfound and Naukri auto-appliers either simultaneously
+ * (default) or individually. Automatically wraps with nodemon
+ * for live file watching and reload.
  *
  * USAGE:
- *   node index.js wellfound login     One-time: open Chrome, log in manually,
- *                                     close the window. Session saved for all future runs.
- *
- *   node index.js wellfound           Dry run: fills every form field but does NOT click
- *                                     Submit. Great for testing without sending anything.
- *
- *   node index.js wellfound --live    Live mode: actually clicks Apply / Submit.
- *                                     Results logged to applications.csv.
- *
- *   node index.js wellfound --offscreen   Run the browser off-screen (won't steal focus).
- *
- * NPM SCRIPTS (from package.json):
- *   npm run login      → save login session
- *   npm run dry        → dry run
- *   npm start          → live apply
- *   npm run offscreen  → live apply in background offscreen
+ *   npm start                           Runs both simultaneously with live reloading
+ *   node index.js all --live            Both Wellfound + Naukri simultaneously
+ *   node index.js wellfound --live      Only Wellfound
+ *   node index.js naukri --live         Only Naukri
+ *   node index.js all login             One-time: log in to both platforms
+ *   node index.js wellfound login       One-time: log in to Wellfound only
+ *   node index.js naukri login          One-time: log in to Naukri only
  */
 'use strict';
 
-const { CV, CREDS, geminiKey, minDelaySeconds, maxDelaySeconds } = require('./config');
+const path = require('path');
 
-const { launchBrowser }                     = require('./runner/browser');
-const { ensureLoggedIn }                    = require('./runner/auth');
-const { buildScript }                       = require('./runner/script-builder');
-const DailyState                            = require('./runner/daily-state');
-const { logApplication }                    = require('./runner/csv-logger');
-const { runSupervisor }                     = require('./runner/supervisor');
-const SITES                                 = require('./runner/sites');
+// ── Auto-wrap with nodemon for live hot-reloading ─────────────
+const isLoginMode = process.argv.includes('login');
+const noWatch     = process.argv.includes('--no-watch');
+const isChild     = process.env.NODEMON_ACTIVE === '1';
 
-// ── CLI args ──────────────────────────────────────────────────
-const SITE_ARG   = process.argv[2];
+if (!isLoginMode && !noWatch && !isChild) {
+  process.env.NODEMON_ACTIVE = '1';
+  let nodemon;
+  try {
+    nodemon = require('nodemon');
+  } catch (_) {
+    // If nodemon is not available, proceed with plain node execution
+  }
+
+  if (nodemon) {
+    const args = process.argv.slice(2);
+    if (args.length === 0) {
+      args.push('all', '--live');
+    }
+
+    nodemon({
+      script: path.join(__dirname, 'index.js'),
+      args,
+      watch:  ['index.js', '.env', 'wellfound', 'naukri'],
+      ext:    'js,json,env',
+      ignore: [
+        '.wellfound-chrome-profile/**',
+        '.naukri-chrome-profile/**',
+        '.*-chrome-profile/**',
+        'apply-state-*.json',
+        'applications*.csv',
+        '*.png',
+        'node_modules/**',
+      ],
+    });
+
+    nodemon
+      .on('start', () => {
+        console.log('[nodemon] Auto-reload watcher active.');
+      })
+      .on('restart', (files) => {
+        const names = files ? files.map((f) => path.basename(f)).join(', ') : 'files';
+        console.log(`\n[nodemon] Detected changes in (${names}) — reloading...`);
+      })
+      .on('quit', () => {
+        process.exit(0);
+      });
+
+    return;
+  }
+}
+
+// ── Platform Runners ──────────────────────────────────────────
+const { runWellfound } = require('./wellfound');
+const { runNaukri }    = require('./naukri');
+
+const SITE_ARG   = (process.argv[2] || 'all').toLowerCase();
 const LOGIN_MODE = process.argv.includes('login');
 const LIVE       = process.argv.includes('--live');
 const OFFSCREEN  = process.argv.includes('--offscreen');
 
-const site = SITES[SITE_ARG];
-if (!site) {
-  console.error('Usage: node index.js wellfound [login|--live|--offscreen]');
+const VALID_SITES = ['wellfound', 'naukri', 'all'];
+if (!VALID_SITES.includes(SITE_ARG)) {
+  console.error('Usage: node index.js [wellfound|naukri|all] [login|--live|--offscreen]');
   process.exit(1);
 }
 
-const ts  = ()    => new Date().toLocaleString('en-IN');
-const log = (msg) => console.log(`[${ts()}] [${SITE_ARG}] ${msg}`);
+const ts  = () => new Date().toLocaleString('en-IN');
+const log = (msg) => console.log(`[${ts()}] [main] ${msg}`);
 
-// Suppress noise from Playwright's CDP session during page navigations.
-// Defined AFTER ts/log so they are always available inside the handlers.
 process.on('unhandledRejection', (e) =>
   log(`unhandledRejection (ignored): ${String(e?.message || e).split('\n')[0]}`)
 );
@@ -57,78 +97,50 @@ process.on('uncaughtException', (e) =>
   log(`uncaughtException (ignored): ${String(e?.message || e).split('\n')[0]}`)
 );
 
-// ── Main ──────────────────────────────────────────────────────
-(async () => {
-  // ── Validate .env loaded correctly ────────────────────────────
-  if (!CV.name || !CV.email) {
-    log('⚠ .env is missing NAME or EMAIL. Copy .env.example → .env and fill it in.');
-    process.exit(1);
-  }
-  log(`CV: ${CV.name} <${CV.email}>`);
+const openContexts = new Set();
 
-  const dayState = new DailyState(SITE_ARG, site.dailyCap);
-
-  if (!LOGIN_MODE && dayState.atCap) {
-    log(`Daily cap of ${site.dailyCap} already reached (${dayState.count} today) — exiting.`);
-    return;
-  }
-
-  log(`Mode: ${LIVE ? '🟢 LIVE — will actually apply' : '🔵 DRY RUN — fills but does not submit'}`);
-  log(`Target: up to ${dayState.target} applications (${dayState.count} submitted today, cap ${site.dailyCap})`);
-
-  // ── Launch browser ─────────────────────────────────────────────
-  const ctx      = await launchBrowser(site.profile, OFFSCREEN);
-  const mainPage = ctx.pages()[0] || (await ctx.newPage());
-
-  const cleanExit = async () => {
+async function closeAllBrowsers() {
+  for (const ctx of openContexts) {
     try { await ctx.close(); } catch (_) {}
-    process.exit(0);
-  };
-  process.once('SIGINT', cleanExit);
-  process.once('SIGTERM', cleanExit);
-  process.once('SIGUSR2', cleanExit);
+  }
+  openContexts.clear();
+}
 
-  // ── Login-only mode ────────────────────────────────────────────
+['SIGINT', 'SIGTERM', 'SIGUSR2'].forEach((sig) => {
+  process.once(sig, async () => {
+    log(`${sig} received — closing all browsers cleanly...`);
+    await closeAllBrowsers();
+    process.exit(0);
+  });
+});
+
+const runners = {
+  wellfound: (opts) => runWellfound({ ...opts, openContexts }),
+  naukri:    (opts) => runNaukri({ ...opts, openContexts }),
+};
+
+// ── Main Orchestrator ─────────────────────────────────────────
+(async () => {
+  const sitesToRun = SITE_ARG === 'all'
+    ? ['wellfound', 'naukri']
+    : [SITE_ARG];
+
+  const opts = { live: LIVE, loginMode: LOGIN_MODE, offscreen: OFFSCREEN };
+
   if (LOGIN_MODE) {
-    await mainPage.goto(site.loginUrl, { waitUntil: 'domcontentloaded', timeout: 60_000 }).catch(() => {});
-    log('Chrome is open — log in to Wellfound, then CLOSE the browser window.');
-    log('Session cookies are saved automatically to: ' + site.profile);
-    await new Promise((res) => ctx.on('close', res));
-    log('Session saved. Run: node index.js ' + SITE_ARG + (LIVE ? ' --live' : ''));
-    return;
+    log(`Starting login mode for: ${sitesToRun.join(' then ')}`);
+    for (const s of sitesToRun) {
+      await runners[s](opts);
+    }
+  } else {
+    if (sitesToRun.length > 1) {
+      log('🚀 Launching WELLFOUND + NAUKRI simultaneously in parallel!');
+    }
+    await Promise.all(sitesToRun.map((s) => runners[s](opts)));
   }
 
-  // ── Ensure we're logged in ─────────────────────────────────────
-  await ensureLoggedIn(mainPage, site, CREDS, log);
-
-  // ── Build the injected script ─────────────────────────────────
-  const script = buildScript({
-    CV,
-    geminiKey,
-    dryRun:          !LIVE,
-    maxApplications: dayState.target,
-    minDelayMs:      minDelaySeconds * 1000,
-    maxDelayMs:      maxDelaySeconds * 1000,
-  });
-
-  log(`Script assembled: ${(script.length / 1024).toFixed(1)} KB`);
-
-  // ── Run ───────────────────────────────────────────────────────
-  await runSupervisor({
-    ctx,
-    mainPage,
-    site,
-    script,
-    target:         dayState.target,
-    live:           LIVE,
-    dayState,
-    logApplication: (job) => logApplication(SITE_ARG, job),
-    log,
-  });
-
-  log('Closing browser...');
-  await ctx.close();
-})().catch((e) => {
-  console.error(`[FATAL] ${e.message}`);
+  log('🏁 All requested platform runs complete.');
+})().catch((err) => {
+  console.error(`[FATAL] ${err.message}`);
   process.exit(1);
 });

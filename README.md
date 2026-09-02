@@ -79,27 +79,42 @@
 
 ## 📁 Architecture
 
-The project follows a clean separation of concerns between Node.js supervisor (`runner/`) and in-browser evaluation (`inject/`):
+The project has **exactly 2 working folders** (`wellfound/` and `naukri/`), each containing all of its own working code:
 
 ```text
-├── index.js                     # Main CLI entry point & workflow orchestrator
-├── config.js                    # Zero-dependency .env loader & profile builder
-├── .env.example                 # Template for candidate profile & credentials
-├── runner/                      # Playwright-side automation & orchestration
-│   ├── auth.js                  # Session verification & login detection
-│   ├── browser.js               # Chrome profile launcher & stealth setup
-│   ├── csv-logger.js            # Appends application data to applications.csv
-│   ├── daily-state.js           # Enforces & persists daily application limits
-│   ├── script-builder.js        # Compiles inject modules into single secure payload
-│   ├── sites.js                 # Search feeds, URLs, and site configuration registry
-│   └── supervisor.js            # Feed navigation, CDP click relay & cycle watcher
-└── inject/                      # In-page browser evaluation scripts
-    ├── utils.js                 # DOM helpers, delay timers, and string cleaners
-    ├── gemini.js                # AI integration (Ollama / Gemini API calls)
-    ├── answers.js               # Cover letter generator & regex Q&A dictionary
-    ├── finder.js                # Feed scraper, card parser & keyword filtering
-    ├── apply.js                 # Modal form filler (inputs, radios, selects, relocation)
-    └── loop.js                  # Main iteration loop over matching jobs
+├── wellfound/                   # 📁 Complete self-contained Wellfound working code
+│   ├── index.js                 # Wellfound runner (standalone: node wellfound/index.js)
+│   ├── site.js                  # Search feed URLs & Wellfound route rules
+│   ├── auth.js                  # Wellfound session check & auto-fill
+│   ├── browser.js               # Playwright persistent context launcher
+│   ├── supervisor.js            # CDP click relay, terminal live countdown & watcher
+│   ├── script-builder.js        # Wellfound script bundler
+│   ├── daily-state.js           # Wellfound daily 50/day cap tracker
+│   ├── csv-logger.js            # Application logger
+│   ├── finder.js                # Wellfound job card parser & keyword filter
+│   ├── apply.js                 # Wellfound application form filler & cover note
+│   ├── loop.js                  # Wellfound navigation & continuous application loop
+│   └── utils.js                 # In-page DOM helpers, countdown timer & AI Q&A
+│
+├── naukri/                      # 📁 Complete self-contained Naukri working code
+│   ├── index.js                 # Naukri runner (standalone: node naukri/index.js)
+│   ├── site.js                  # Search URLs & Naukri route rules
+│   ├── auth.js                  # Naukri session check & auto-fill
+│   ├── browser.js               # Playwright persistent context launcher
+│   ├── supervisor.js            # CDP click relay, terminal live countdown & watcher
+│   ├── script-builder.js        # Naukri script bundler
+│   ├── daily-state.js           # Naukri daily 50/day cap tracker
+│   ├── csv-logger.js            # Application logger
+│   ├── finder.js                # Naukri job tuple parser & experience filter
+│   ├── apply.js                 # Naukri 1-click apply, questionnaire & chatbot filler
+│   ├── loop.js                  # Naukri tab blocker, pagination & continuous loop
+│   └── utils.js                 # In-page DOM helpers, countdown timer & AI Q&A
+│
+├── package.json                 # Project dependencies & npm scripts
+├── package-lock.json
+├── index.js                     # Unified orchestrator (runs both platforms or single)
+├── applications.csv             # Centralized application log
+└── .env                         # Candidate credentials & profile data
 ```
 
 ---

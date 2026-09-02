@@ -1,21 +1,24 @@
 {
   "name": "wellfound-auto-apply",
   "version": "2.0.0",
-  "description": "Automated Wellfound job applier using Playwright. Modular inject/ + runner/ architecture.",
+  "description": "Automated Wellfound & Naukri job applier using Playwright. Modular wellfound/ + naukri/ + shared/ architecture.",
   "main": "index.js",
   "scripts": {
-    "login": "node index.js wellfound login",
-    "dry": "nodemon index.js wellfound",
-    "start": "nodemon index.js wellfound --live",
-    "offscreen": "nodemon index.js wellfound --live --offscreen"
+    "start": "node index.js all --live",
+    "dry": "node index.js all",
+    "wellfound": "node index.js wellfound --live",
+    "naukri": "node index.js naukri --live",
+    "login": "node index.js all login",
+    "login:wellfound": "node index.js wellfound login",
+    "login:naukri": "node index.js naukri login",
+    "offscreen": "node index.js all --live --offscreen"
   },
   "nodemonConfig": {
     "watch": [
       "index.js",
-      "config.js",
       ".env",
-      "inject",
-      "runner"
+      "wellfound",
+      "naukri"
     ],
     "ext": "js,json,env",
     "ignore": [

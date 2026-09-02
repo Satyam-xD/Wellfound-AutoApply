@@ -16,7 +16,7 @@ class DailyState {
   constructor(siteName, cap = 50) {
     this.siteName = siteName;
     this.cap      = cap;
-    this.file     = path.join(__dirname, '..', `apply-state-${siteName}.json`);
+    this.file     = path.join(__dirname, '..', '..', `apply-state-${siteName}.json`);
     this.todayKey = new Date().toDateString();
     this._load();
   }

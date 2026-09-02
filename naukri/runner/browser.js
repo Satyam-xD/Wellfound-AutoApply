@@ -28,7 +28,7 @@ try {
 async function launchBrowser(profileDir, offscreen = false) {
   const fullProfile = path.isAbsolute(profileDir)
     ? profileDir
-    : path.join(__dirname, '..', profileDir);
+    : path.join(__dirname, '..', '..', profileDir);
 
   const baseArgs = [
     // ── Stealth: hide automation signals ───────────────────────────────────────
